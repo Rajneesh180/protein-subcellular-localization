@@ -1,0 +1,46 @@
+# data
+/data/
+*.csv
+*.pkl
+*.h5
+*.hdf5
+
+# model artifacts
+checkpoints/
+mlruns/
+*.pth
+*.pt
+*.onnx
+
+# python
+__pycache__/
+*.pyc
+*.pyo
+.eggs/
+*.egg-info/
+dist/
+build/
+*.egg
+
+# env
+.env
+venv/
+.venv/
+env/
+
+# ide
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# jupyter
+.ipynb_checkpoints/
+
+# os
+.DS_Store
+Thumbs.db
+
+# docker
+*.log

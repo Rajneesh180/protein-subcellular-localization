@@ -1,0 +1,47 @@
+training:
+  epochs: 30
+  batch_size: 16
+  lr: 3e-4
+  weight_decay: 1e-5
+  freeze_epochs: 5          # freeze backbone for first N epochs
+  unfreeze_blocks: 2        # unfreeze last N blocks after freeze phase
+  scheduler: reduce_on_plateau
+  scheduler_patience: 3
+  scheduler_factor: 0.5
+  early_stopping_patience: 7
+  num_workers: 4
+  seed: 42
+
+data:
+  root_dir: data/
+  train_csv: data/train.csv
+  image_dir: data/train
+  image_size: 512
+  num_classes: 28
+  val_split: 0.15
+  channels: 4               # RGBY: protein, nucleus, microtubule, ER
+
+model:
+  backbone: efficientnet_b0
+  pretrained: true
+  drop_rate: 0.3
+
+cbam:
+  reduction_ratio: 16
+  kernel_size: 7
+
+transformer:
+  embed_dim: 256
+  num_heads: 4
+  depth: 2
+  mlp_ratio: 4.0
+  patch_size: 1              # applied on CNN feature maps, not raw image
+
+mlflow:
+  experiment_name: hpa-protein-localization
+  tracking_uri: mlruns/
+
+serving:
+  host: 0.0.0.0
+  port: 8000
+  model_path: checkpoints/best_model.pth
