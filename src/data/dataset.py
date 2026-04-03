@@ -53,7 +53,7 @@ class HPADataset(Dataset):
         for color in CHANNELS:
             path = os.path.join(self.image_dir, f"{image_id}_{color}.png")
             img = Image.open(path).convert("L")
-            img = img.resize((self.image_size, self.image_size), Image.BILINEAR)
+            img = img.resize((self.image_size, self.image_size), Image.Resampling.BILINEAR)
             channels.append(np.asarray(img, dtype=np.float32))
 
         # stack: (H, W, 4)

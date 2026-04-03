@@ -52,7 +52,7 @@ def preprocess_image(image_bytes: bytes) -> torch.Tensor:
     packed into an RGBA png.
     """
     img = Image.open(io.BytesIO(image_bytes))
-    img = img.resize((IMAGE_SIZE, IMAGE_SIZE), Image.BILINEAR)
+    img = img.resize((IMAGE_SIZE, IMAGE_SIZE), Image.Resampling.BILINEAR)
 
     img_array = np.array(img, dtype=np.float32)
 
