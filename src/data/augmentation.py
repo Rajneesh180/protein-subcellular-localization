@@ -22,7 +22,7 @@ def get_train_transforms(image_size: int = 512) -> A.Compose:
             contrast_limit=0.1,
             p=0.3,
         ),
-        A.GaussNoise(var_limit=(10, 50), p=0.2),
+        A.GaussNoise(std_range=(0.02, 0.1), p=0.2),
         A.Normalize(
             mean=[0.08] * 4,  # HPA images are sparse/dark
             std=[0.15] * 4,
