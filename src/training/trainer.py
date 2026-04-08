@@ -136,11 +136,13 @@ class Trainer:
                 train_metrics = self.train_epoch()
                 val_metrics = self.validate()
 
-                # log to mlflow
+                # log to mlflow (skip non-scalar values like per-class lists)
                 for k, v in train_metrics.items():
-                    mlflow.log_metric(f"train_{k}", v, step=epoch)
+                    if isinstance(v, (int, float)):
+                        mlflow.log_metric(f"train_{k}", v, step=epoch)
                 for k, v in val_metrics.items():
-                    mlflow.log_metric(f"val_{k}", v, step=epoch)
+                    if isinstance(v, (int, float)):
+                        mlflow.log_metric(f"val_{k}", v, step=epoch)
 
                 print(f"Train — loss: {train_metrics['loss']:.4f}, "
                       f"f1_macro: {train_metrics['f1_macro']:.4f}")
