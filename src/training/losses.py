@@ -8,10 +8,11 @@ import numpy as np
 class FocalLoss(nn.Module):
     """Focal loss for handling class imbalance in multi-label setting.
 
-    Reduces loss for well-classified examples, focusing on hard negatives.
+    Alpha weights: alpha for positive samples, (1-alpha) for negatives.
+    Higher alpha up-weights rare positive labels.
     """
 
-    def __init__(self, alpha: float = 0.25, gamma: float = 2.0):
+    def __init__(self, alpha: float = 0.75, gamma: float = 2.0):
         super().__init__()
         self.alpha = alpha
         self.gamma = gamma
@@ -20,7 +21,9 @@ class FocalLoss(nn.Module):
         bce = nn.functional.binary_cross_entropy_with_logits(logits, targets, reduction="none")
         probs = torch.sigmoid(logits)
         p_t = probs * targets + (1 - probs) * (1 - targets)
-        focal_weight = self.alpha * (1 - p_t) ** self.gamma
+        # alpha_t: alpha for positives, (1-alpha) for negatives
+        alpha_t = self.alpha * targets + (1 - self.alpha) * (1 - targets)
+        focal_weight = alpha_t * (1 - p_t) ** self.gamma
         loss = focal_weight * bce
         return loss.mean()
 
@@ -36,10 +39,9 @@ def get_pos_weights(csv_path: str, num_classes: int = 28) -> torch.Tensor:
             counts[int(lbl)] += 1
 
     total = len(df)
-    # weight = num_negatives / num_positives per class
     neg_counts = total - counts
-    weights = neg_counts / np.clip(counts, 1, None)
 
-    # clamp to avoid extreme weights for rare classes
-    weights = np.clip(weights, 1.0, 50.0)
+    # log-damped weights to avoid extreme values for very rare classes
+    weights = np.log1p(neg_counts / np.clip(counts, 1, None))
+    weights = np.clip(weights, 0.5, 10.0)
     return torch.tensor(weights, dtype=torch.float32)
