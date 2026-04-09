@@ -1,25 +1,25 @@
 training:
-  epochs: 30
-  batch_size: 16
+  epochs: 15
+  batch_size: 8
   lr: 3e-4
   weight_decay: 1e-5
-  freeze_epochs: 5          # freeze backbone for first N epochs
+  freeze_epochs: 3           # freeze backbone for first N epochs
   unfreeze_blocks: 2        # unfreeze last N blocks after freeze phase
   scheduler: reduce_on_plateau
   scheduler_patience: 3
   scheduler_factor: 0.5
   early_stopping_patience: 7
-  num_workers: 4
+  num_workers: 2
   seed: 42
 
 data:
   root_dir: data/
-  train_csv: data/train.csv
-  image_dir: data/train
-  image_size: 512
+  train_csv: data/hpa_train.csv
+  image_dir: data/hpa_images
+  image_size: 256
   num_classes: 28
   val_split: 0.15
-  channels: 4               # RGBY: protein, nucleus, microtubule, ER
+  channels: 4               # RGBY: microtubule, protein, nucleus, ER
 
 model:
   backbone: efficientnet_b0

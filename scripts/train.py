@@ -2,15 +2,24 @@
 
 import argparse
 import os
+import random
+
+import numpy as np
 import yaml
 import torch
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader, Subset
 
 from src.data.dataset import HPADataset
 from src.data.augmentation import get_train_transforms, get_val_transforms
 from src.models.factory import build_model
 from src.training.losses import FocalLoss, get_pos_weights
 from src.training.trainer import Trainer
+
+_SEED = 42
+
+def _worker_init_fn(worker_id):
+    np.random.seed(_SEED + worker_id)
+    random.seed(_SEED + worker_id)
 
 
 def parse_args():
@@ -43,47 +52,71 @@ def main():
 
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
 
-    # seed everything
-    torch.manual_seed(train_cfg["seed"])
+    # seed everything for reproducibility
+    seed = train_cfg["seed"]
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
     if device == "cuda":
-        torch.cuda.manual_seed_all(train_cfg["seed"])
+        torch.cuda.manual_seed_all(seed)
 
-    # dataset
+    # datasets with separate instances for train/val (avoids Subset leakage)
     image_size = cfg["data"]["image_size"]
-    full_dataset = HPADataset(
+    train_full = HPADataset(
         csv_path=cfg["data"]["train_csv"],
         image_dir=cfg["data"]["image_dir"],
         transform=get_train_transforms(image_size),
         image_size=image_size,
     )
-
-    # train/val split
-    val_size = int(len(full_dataset) * cfg["data"]["val_split"])
-    train_size = len(full_dataset) - val_size
-    train_dataset, val_dataset = random_split(full_dataset, [train_size, val_size])
-
-    # apply val transforms to val split
-    val_dataset.dataset = HPADataset(
+    val_full = HPADataset(
         csv_path=cfg["data"]["train_csv"],
         image_dir=cfg["data"]["image_dir"],
         transform=get_val_transforms(image_size),
         image_size=image_size,
     )
 
+    # stratified train/val split (preserves label distribution)
+    n = len(train_full)
+    val_size = int(n * cfg["data"]["val_split"])
+    indices = list(range(n))
+    # use label frequency as stratification key
+    label_sums = train_full.targets.sum(axis=1)
+    sorted_indices = sorted(indices, key=lambda i: label_sums[i])
+    # interleave: put every k-th sample into val
+    k = max(1, n // val_size) if val_size > 0 else n + 1
+    val_indices = sorted_indices[::k][:val_size]
+    val_set = set(val_indices)
+    train_indices = [i for i in indices if i not in val_set]
+
+    train_dataset = Subset(train_full, train_indices)
+    val_dataset = Subset(val_full, val_indices)
+    print(f"Split: {len(train_indices)} train, {len(val_indices)} val")
+
+    # reproducible DataLoader workers
+    global _SEED
+    _SEED = seed
+    g = torch.Generator()
+    g.manual_seed(seed)
+
+    num_workers = train_cfg["num_workers"]
+
     train_loader = DataLoader(
         train_dataset,
         batch_size=train_cfg["batch_size"],
         shuffle=True,
-        num_workers=train_cfg["num_workers"],
-        pin_memory=True,
-        drop_last=True,
+        num_workers=num_workers,
+        pin_memory=(device == "cuda"),
+        drop_last=False,
+        generator=g,
+        worker_init_fn=_worker_init_fn,
     )
     val_loader = DataLoader(
         val_dataset,
         batch_size=train_cfg["batch_size"],
         shuffle=False,
-        num_workers=train_cfg["num_workers"],
-        pin_memory=True,
+        num_workers=num_workers,
+        pin_memory=(device == "cuda"),
+        worker_init_fn=_worker_init_fn,
     )
 
     # model
@@ -106,17 +139,27 @@ def main():
 
     # loss
     if args.loss == "focal":
-        criterion = FocalLoss(alpha=0.25, gamma=2.0)
+        criterion = FocalLoss(alpha=0.75, gamma=2.0)
     else:
         pos_weight = get_pos_weights(cfg["data"]["train_csv"])
         criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight.to(device))
 
-    # optimizer + scheduler
-    optimizer = torch.optim.Adam(
-        model.parameters(),
-        lr=train_cfg["lr"],
-        weight_decay=train_cfg["weight_decay"],
-    )
+    # optimizer with differential LR (lower for backbone, higher for head)
+    backbone_params = []
+    head_params = []
+    for name, param in model.named_parameters():
+        if not param.requires_grad:
+            continue
+        if "backbone" in name:
+            backbone_params.append(param)
+        else:
+            head_params.append(param)
+
+    lr = float(train_cfg["lr"])
+    optimizer = torch.optim.Adam([
+        {"params": backbone_params, "lr": lr * 0.1},
+        {"params": head_params, "lr": lr},
+    ], weight_decay=float(train_cfg["weight_decay"]))
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer,
         mode="min",
@@ -127,6 +170,7 @@ def main():
     # train
     trainer = Trainer(
         model=model,
+        model_name=args.model,
         train_loader=train_loader,
         val_loader=val_loader,
         criterion=criterion,
