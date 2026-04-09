@@ -2,6 +2,7 @@
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import timm
 
 
@@ -88,8 +89,8 @@ class HybridCNNTransformer(nn.Module):
         nn.init.trunc_normal_(self.cls_token, std=0.02)
 
         # positional embedding — will be interpolated if spatial size changes
-        # for efficientnet_b0 with 512 input, feature map is 16x16 = 256 patches + 1 cls
-        self.pos_embed = nn.Parameter(torch.zeros(1, 257, embed_dim))
+        # for efficientnet_b0 with 256 input, feature map is 8x8 = 64 patches + 1 cls
+        self.pos_embed = nn.Parameter(torch.zeros(1, 65, embed_dim))
         nn.init.trunc_normal_(self.pos_embed, std=0.02)
 
         # Transformer blocks
@@ -105,12 +106,23 @@ class HybridCNNTransformer(nn.Module):
         )
 
     def _interpolate_pos_embed(self, x: torch.Tensor) -> torch.Tensor:
-        """Adjust positional embedding if sequence length doesn't match."""
+        """Adjust positional embedding if sequence length doesn't match via 2D interpolation."""
         n = x.shape[1]
         if n == self.pos_embed.shape[1]:
             return self.pos_embed
-        # just truncate or pad — simple approach
-        return self.pos_embed[:, :n, :]
+
+        cls_embed = self.pos_embed[:, :1, :]
+        patch_embed = self.pos_embed[:, 1:, :]
+        old_n = patch_embed.shape[1]
+        old_h = int(old_n ** 0.5)
+        new_n = n - 1
+        new_h = int(new_n ** 0.5)
+
+        # reshape to 2D grid, interpolate, flatten back
+        patch_embed = patch_embed.reshape(1, old_h, old_h, -1).permute(0, 3, 1, 2)
+        patch_embed = F.interpolate(patch_embed, size=(new_h, new_h), mode="bilinear", align_corners=False)
+        patch_embed = patch_embed.permute(0, 2, 3, 1).reshape(1, new_h * new_h, -1)
+        return torch.cat([cls_embed, patch_embed], dim=1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # extract CNN features
@@ -159,9 +171,11 @@ class HybridCNNTransformer(nn.Module):
 
         attn_maps = []
         for block in self.transformer:
+            # manually run the block from forward, capturing attention weights
             x_norm = block.norm1(tokens)
-            _, attn_weights = block.attn(x_norm, x_norm, x_norm, need_weights=True)
+            attn_out, attn_weights = block.attn(x_norm, x_norm, x_norm, need_weights=True)
+            tokens = tokens + attn_out
+            tokens = tokens + block.mlp(block.norm2(tokens))
             attn_maps.append(attn_weights.detach())
-            tokens = block(tokens)
 
         return attn_maps

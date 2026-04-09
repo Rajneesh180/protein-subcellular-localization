@@ -97,3 +97,8 @@ class EfficientNetCBAM(nn.Module):
         for block in blocks[-num_blocks:]:
             for param in block.parameters():
                 param.requires_grad = True
+
+    def get_feature_maps(self, x: torch.Tensor) -> torch.Tensor:
+        """Return CBAM-attended feature maps before pooling — used for Grad-CAM."""
+        features = self.backbone.forward_features(x)
+        return self.cbam(features)
