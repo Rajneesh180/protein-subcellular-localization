@@ -39,7 +39,7 @@ def compute_metrics(targets: np.ndarray, predictions: np.ndarray, threshold: flo
 
 
 def find_best_threshold(targets: np.ndarray, predictions: np.ndarray) -> float:
-    """Grid search for optimal binarization threshold based on F1-macro."""
+    """Grid search for optimal global binarization threshold based on F1-macro."""
     best_f1 = 0.0
     best_thresh = 0.5
 
@@ -51,3 +51,21 @@ def find_best_threshold(targets: np.ndarray, predictions: np.ndarray) -> float:
             best_thresh = thresh
 
     return best_thresh
+
+
+def find_per_class_thresholds(targets: np.ndarray, predictions: np.ndarray) -> np.ndarray:
+    """Find optimal threshold per class via grid search on F1."""
+    num_classes = targets.shape[1]
+    thresholds = np.full(num_classes, 0.5)
+
+    for cls in range(num_classes):
+        if targets[:, cls].sum() == 0:
+            continue
+        best_f1 = 0.0
+        for thresh in np.arange(0.1, 0.7, 0.05):
+            binary = (predictions[:, cls] >= thresh).astype(int)
+            f1 = f1_score(targets[:, cls], binary, zero_division=0)
+            if f1 > best_f1:
+                best_f1 = f1
+                thresholds[cls] = thresh
+    return thresholds

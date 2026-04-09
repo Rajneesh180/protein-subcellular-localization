@@ -2,10 +2,11 @@
 
 import argparse
 import os
+import random
 import yaml
 import torch
 import numpy as np
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 
 from src.data.dataset import HPADataset, HPA_LABELS
 from src.data.augmentation import get_val_transforms
@@ -17,7 +18,8 @@ from src.evaluation.gradcam import generate_gradcam, visualize_gradcam_grid, vis
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=str, default="configs/config.yaml")
-    parser.add_argument("--checkpoint", type=str, required=True)
+    parser.add_argument("--checkpoint", type=str, default=None,
+                        help="path to checkpoint (default: checkpoints/{model}_best.pth)")
     parser.add_argument("--model", type=str, default="baseline", choices=["baseline", "cbam", "hybrid"])
     parser.add_argument("--gradcam", action="store_true", help="generate Grad-CAM visualizations")
     parser.add_argument("--attention", action="store_true", help="generate attention maps (hybrid only)")
@@ -75,17 +77,31 @@ def main():
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
 
     # load model
-    model = load_model(args.model, args.checkpoint, cfg, device)
-    print(f"Loaded {args.model} from {args.checkpoint}")
+    checkpoint_path = args.checkpoint or os.path.join("checkpoints", f"{args.model}_best.pth")
+    model = load_model(args.model, checkpoint_path, cfg, device)
+    print(f"Loaded {args.model} from {checkpoint_path}")
 
-    # dataset
+    # dataset — use the same val split as training for fair evaluation
     image_size = cfg["data"]["image_size"]
-    dataset = HPADataset(
+    full_dataset = HPADataset(
         csv_path=cfg["data"]["train_csv"],
         image_dir=cfg["data"]["image_dir"],
         transform=get_val_transforms(image_size),
         image_size=image_size,
     )
+
+    # reproduce the train/val split from train.py
+    seed = cfg["training"]["seed"]
+    n = len(full_dataset)
+    val_size = int(n * cfg["data"]["val_split"])
+    indices = list(range(n))
+    label_sums = full_dataset.targets.sum(axis=1)
+    sorted_indices = sorted(indices, key=lambda i: label_sums[i])
+    k = max(1, n // val_size) if val_size > 0 else n + 1
+    val_indices = sorted_indices[::k][:val_size]
+
+    dataset = Subset(full_dataset, val_indices)
+    print(f"Evaluating on {len(dataset)} validation samples")
     loader = DataLoader(dataset, batch_size=16, shuffle=False, num_workers=4)
 
     # run inference
