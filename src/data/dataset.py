@@ -8,15 +8,15 @@ from torch.utils.data import Dataset
 from PIL import Image
 
 
-# official HPA class names
+# HPA 28-class names
 HPA_LABELS = [
     "Nucleoplasm", "Nuclear membrane", "Nucleoli", "Nucleoli fibrillar center",
     "Nuclear speckles", "Nuclear bodies", "Endoplasmic reticulum", "Golgi apparatus",
-    "Intermediate filaments", "Actin filaments", "Microtubules", "Mitotic spindle",
-    "Centrosome", "Plasma membrane", "Mitochondria", "Aggresome",
-    "Cytosol", "Vesicles and puncta", "Negative", "Endosomes",
-    "Lysosomes", "Lipid droplets", "Peroxisomes", "Autophagosomes",
-    "Focal adhesion sites", "Cell junctions", "Rods and rings", "Undefined",
+    "Intermediate filaments", "Actin filaments", "Focal adhesion sites", "Centrosome",
+    "Centriolar satellite", "Plasma membrane", "Mitochondria", "Aggresome",
+    "Cytosol", "Vesicles and punctate cytoplasmic patterns", "Peroxisomes", "Endosomes",
+    "Lysosomes", "Lipid droplets", "Cytoplasmic bodies", "No staining",
+    "Rods & rings", "Cell junctions", "Mitotic spindle", "Cytokinetic bridge",
 ]
 
 NUM_CLASSES = len(HPA_LABELS)
@@ -30,8 +30,8 @@ class HPADataset(Dataset):
     Target is a 28-dim binary vector.
     """
 
-    def __init__(self, csv_path: str, image_dir: str, transform=None, image_size: int = 512):
-        self.df = pd.read_csv(csv_path)
+    def __init__(self, csv_path: str, image_dir: str, transform=None, image_size: int = 256):
+        self.df = pd.read_csv(csv_path, dtype={"Id": str})
         self.image_dir = image_dir
         self.transform = transform
         self.image_size = image_size
@@ -41,10 +41,10 @@ class HPADataset(Dataset):
 
     def _encode_labels(self) -> np.ndarray:
         encoded = np.zeros((len(self.df), NUM_CLASSES), dtype=np.float32)
-        for i, row in self.df.iterrows():
-            labels = str(row["Target"]).split()
+        for idx in range(len(self.df)):
+            labels = str(self.df.iloc[idx]["Target"]).split()
             for lbl in labels:
-                encoded[i, int(lbl)] = 1.0
+                encoded[idx, int(lbl)] = 1.0
         return encoded
 
     def _load_image(self, image_id: str) -> np.ndarray:
@@ -73,10 +73,13 @@ class HPADataset(Dataset):
         if self.transform is not None:
             augmented = self.transform(image=image)
             image = augmented["image"]
-
-        # convert to tensor: (4, H, W) normalized to [0, 1]
-        if isinstance(image, np.ndarray):
+        else:
+            # no transform: manually normalize and convert to tensor
             image = torch.from_numpy(image).permute(2, 0, 1) / 255.0
+
+        # if transform produced ndarray (shouldn't with ToTensorV2), convert
+        if isinstance(image, np.ndarray):
+            image = torch.from_numpy(image).permute(2, 0, 1)
 
         target = torch.from_numpy(target)
 

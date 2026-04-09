@@ -10,14 +10,15 @@ from contextlib import asynccontextmanager
 
 from src.models.factory import build_model
 from src.data.dataset import HPA_LABELS
+from src.data.augmentation import HPA_MEAN, HPA_STD
 from src.serving.schemas import PredictionResult, HealthResponse
 
 
 MODEL_PATH = os.environ.get("MODEL_PATH", "checkpoints/best_model.pth")
 MODEL_NAME = os.environ.get("MODEL_NAME", "hybrid")
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-IMAGE_SIZE = 512
-THRESHOLD = 0.5
+IMAGE_SIZE = int(os.environ.get("IMAGE_SIZE", "256"))
+THRESHOLD = float(os.environ.get("THRESHOLD", "0.5"))
 
 model = None
 
@@ -66,8 +67,11 @@ def preprocess_image(image_bytes: bytes) -> torch.Tensor:
     elif img_array.shape[-1] > 4:
         img_array = img_array[:, :, :4]
 
-    # normalize and convert to (1, 4, H, W) tensor
+    # normalize with same stats as training and convert to (1, 4, H, W) tensor
+    mean = torch.tensor(HPA_MEAN).view(4, 1, 1)
+    std = torch.tensor(HPA_STD).view(4, 1, 1)
     tensor = torch.from_numpy(img_array).permute(2, 0, 1).unsqueeze(0) / 255.0
+    tensor = (tensor - mean) / std
     return tensor
 
 
