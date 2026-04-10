@@ -130,6 +130,48 @@ Grad-CAM heatmaps show which image regions drive each prediction. The hybrid mod
 
 See `notebooks/results.ipynb` for attention map visualizations and per-class analysis.
 
+## Visualizations
+
+### Dataset Overview
+
+**Label Distribution** — The dataset is heavily imbalanced: Nucleoplasm and Cytosol dominate while many organelle classes have fewer than 20 samples. This imbalance motivates the use of Focal Loss and per-class threshold optimization.
+
+![Label Distribution](assets/label_distribution.png)
+
+**Sample Images** — RGBY composite fluorescence microscopy images showing proteins localizing to different subcellular compartments. Each image combines four staining channels into a single RGB composite.
+
+![Sample Images](assets/sample_images.png)
+
+**Four-Channel Detail** — A single image decomposed into its four constituent channels: red (microtubule), green (protein of interest), blue (nucleus), and yellow (ER). The composite view on the right shows how these channels combine.
+
+![Channel Detail](assets/channel_detail.png)
+
+### Model Performance
+
+**Model Comparison** — F1-macro scores across all three architectures, comparing fixed threshold (τ=0.5) vs per-class optimized thresholds. The hybrid CNN-Transformer consistently outperforms both baselines. Precision vs recall trade-off shown on the right.
+
+![Model Comparison](assets/model_comparison.png)
+
+**Per-Class F1 & Co-occurrence** — Left: per-class F1 scores for the best model (Hybrid), color-coded by performance (green > 0.3, yellow > 0.1, red < 0.1). Right: label co-occurrence heatmap showing which organelle classes frequently appear together.
+
+![Per-Class Performance](assets/per_class_performance.png)
+
+### Predictions & Interpretability
+
+**Sample Predictions** — Ground-truth vs predicted labels for 8 validation images. Top predictions shown with confidence scores.
+
+![Sample Predictions](assets/sample_predictions.png)
+
+**Transformer Attention Maps** — The hybrid model's two Transformer blocks learn distinct spatial attention patterns. Block 1 captures broad structural features while Block 2 focuses on specific subcellular regions. The attention shift map (rightmost column) highlights where the second block redirects focus.
+
+![Attention Maps](assets/attention_maps.png)
+
+### Training Dynamics
+
+**Training Curves** — Loss convergence, F1-macro progression, and learning rate schedule across all three models (logged via MLflow). The hybrid model achieves the best validation F1 while maintaining stable training dynamics.
+
+![Training Curves](assets/training_curves.png)
+
 ## References
 
 1. S. Aggarwal et al. — "A CNN-Based Framework for Classification of Protein Localization Using Confocal Microscopy Images" — IEEE Access, 2022
