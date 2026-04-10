@@ -116,8 +116,9 @@ def visualize_attention_maps(
         axes[i, 0].axis("off")
 
         for layer_idx, attn in enumerate(attn_maps):
-            # average over heads, show CLS token attention to patches
-            cls_attn = attn[i].mean(dim=0)[0, 1:]  # skip CLS-to-CLS
+            # attn shape: (B, N, N) — averaged over heads by MultiheadAttention
+            # CLS token attention to patches (skip CLS-to-CLS at index 0)
+            cls_attn = attn[i][0, 1:]
             n_patches = cls_attn.shape[0]
             h = w = int(n_patches ** 0.5)
             if h * w != n_patches:
